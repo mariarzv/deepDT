@@ -1,12 +1,16 @@
 # vim: expandtab:ts=4:sw=4
 from __future__ import absolute_import
 import numpy as np
-from . import kalman_filter
+# from .
+from deep_sort import kalman_filter
 # from . import linear_assignment
-from scipy.optimize import linear_sum_assignment as linear_assignment
-from . import iou_matching
+# from scipy.optimize import linear_sum_assignment as linear_assignment
+# from linear_assignment import linear_assignment
+# from .
+from deep_sort import iou_matching
 from .track import Track
 
+import linear_assignment
 
 class Tracker:
     """
@@ -110,6 +114,7 @@ class Tracker:
             i for i, t in enumerate(self.tracks) if not t.is_confirmed()]
 
         # Associate confirmed tracks using appearance features.
+        # la = linear_assignment()
         matches_a, unmatched_tracks_a, unmatched_detections = \
             linear_assignment.matching_cascade(
                 gated_metric, self.metric.matching_threshold, self.max_age,
