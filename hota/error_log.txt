@@ -1,0 +1,13 @@
+MotChallenge2DBox
+MPNTrack
+Traceback (most recent call last):
+  File "C:\Users\maria\dev\HSE\deepDT\hota\trackeval\eval.py", line 180, in evaluate
+    metric.plot_single_tracker_results(table_res, tracker_display_name, c_cls,
+  File "C:\Users\maria\dev\HSE\deepDT\hota\trackeval\metrics\hota.py", line 185, in plot_single_tracker_results
+    from matplotlib import pyplot as plt
+ModuleNotFoundError: No module named 'matplotlib'
+
+
+
+
+
