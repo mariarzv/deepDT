@@ -72,20 +72,34 @@ class ImageEncoder(object):
 
     def __init__(self, checkpoint_filename, input_name="images",
                  output_name="features"):
-        self.session = tf.Session()
-        with tf.gfile.GFile(checkpoint_filename, "rb") as file_handle:
-            graph_def = tf.GraphDef()
+        self.session = tf.compat.v1.Session() # tf.Session()
+        with tf.io.gfile.GFile(checkpoint_filename, "rb") as file_handle:
+            graph_def = tf.compat.v1.GraphDef()
             graph_def.ParseFromString(file_handle.read())
         tf.import_graph_def(graph_def, name="net")
-        self.input_var = tf.get_default_graph().get_tensor_by_name(
-            "net/%s:0" % input_name)
-        self.output_var = tf.get_default_graph().get_tensor_by_name(
-            "net/%s:0" % output_name)
+        self.input_var = tf.compat.v1.get_default_graph().get_tensor_by_name(
+            # "net/%s:0" % input_name)
+            "%s:0" % input_name)
+        self.output_var = tf.compat.v1.get_default_graph().get_tensor_by_name(
+            # "net/%s:0" % output_name)
+            "%s:0" % input_name)
 
-        assert len(self.output_var.get_shape()) == 2
+        outshape = self.output_var.get_shape()
+        inshape = self.input_var.get_shape()
+        ol = len(outshape)
+        il = len(inshape)
+
+        corrected_out = tf.concat([self.output_var[0:1], self.output_var[-1:]], axis=0)
+        corshape = corrected_out.get_shape()
+
+        # assert len(self.output_var.get_shape()) == 2
+        assert len(corrected_out.get_shape()) == 2
         assert len(self.input_var.get_shape()) == 4
-        self.feature_dim = self.output_var.get_shape().as_list()[-1]
+        # self.feature_dim = self.output_var.get_shape().as_list()[-1]
+        self.feature_dim = corrected_out.get_shape().as_list()[-1]
         self.image_shape = self.input_var.get_shape().as_list()[1:]
+
+
 
     def __call__(self, data_x, batch_size=32):
         out = np.zeros((len(data_x), self.feature_dim), np.float32)
@@ -184,14 +198,17 @@ def generate_detections(encoder, mot_dir, output_dir, detection_dir=None):
 def parse_args():
     """Parse command line arguments.
     """
+    marspb = os.path.join(os.path.dirname(__file__), '..', 'networks', 'mars-small128.ckpt-68577.pb')
+    motdir = os.path.join(os.path.dirname(__file__), '..', 'MOT16', 'MOT16-01')
+
     parser = argparse.ArgumentParser(description="Re-ID feature extractor")
     parser.add_argument(
         "--model",
-        default="resources/networks/mars-small128.pb",
+        default=marspb,
         help="Path to freezed inference graph protobuf.")
     parser.add_argument(
         "--mot_dir", help="Path to MOTChallenge directory (train or test)",
-        required=True)
+        default=motdir)
     parser.add_argument(
         "--detection_dir", help="Path to custom detections. Defaults to "
         "standard MOT detections Directory structure should be the default "

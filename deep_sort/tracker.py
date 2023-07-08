@@ -10,7 +10,7 @@ from deep_sort import kalman_filter
 from deep_sort import iou_matching
 from .track import Track
 
-import linear_assignment
+from deep_sort import linear_assignment
 
 class Tracker:
     """

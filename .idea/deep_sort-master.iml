@@ -7,6 +7,7 @@
       <sourceFolder url="file://$MODULE_DIR$/hota/trackeval" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/hota" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/deep_sort_upgrade" isTestSource="false" />
     </content>
     <orderEntry type="jdk" jdkName="Python 3.10 (venv)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
