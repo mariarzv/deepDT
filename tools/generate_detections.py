@@ -18,6 +18,7 @@ def _run_in_batches(f, data_dict, out, batch_size):
         out[s:e] = f(batch_data_dict)
     if e < len(out):
         batch_data_dict = {k: v[e:] for k, v in data_dict.items()}
+        # out[e:] = f(batch_data_dict)
         out[e:] = f(batch_data_dict)
 
 
@@ -82,21 +83,22 @@ class ImageEncoder(object):
             "%s:0" % input_name)
         self.output_var = tf.compat.v1.get_default_graph().get_tensor_by_name(
             # "net/%s:0" % output_name)
-            "%s:0" % input_name)
+            "%s:0" % output_name)
 
         outshape = self.output_var.get_shape()
         inshape = self.input_var.get_shape()
         ol = len(outshape)
         il = len(inshape)
 
-        corrected_out = tf.concat([self.output_var[0:1], self.output_var[-1:]], axis=0)
-        corshape = corrected_out.get_shape()
+        # corrected_out = self.output_var[:, 0, 0, :]
+        # corrected_out = tf.concat([self.output_var[0:1], self.output_var[-1:]], axis=0)
+        # corshape = corrected_out.get_shape()
 
         # assert len(self.output_var.get_shape()) == 2
-        assert len(corrected_out.get_shape()) == 2
+        # assert len(corrected_out.get_shape()) == 2
         assert len(self.input_var.get_shape()) == 4
         # self.feature_dim = self.output_var.get_shape().as_list()[-1]
-        self.feature_dim = corrected_out.get_shape().as_list()[-1]
+        self.feature_dim = self.output_var.get_shape().as_list()[-1]
         self.image_shape = self.input_var.get_shape().as_list()[1:]
 
 
@@ -160,46 +162,54 @@ def generate_detections(encoder, mot_dir, output_dir, detection_dir=None):
                 "Failed to created output directory '%s'" % output_dir)
 
     for sequence in os.listdir(mot_dir):
-        print("Processing %s" % sequence)
-        sequence_dir = os.path.join(mot_dir, sequence)
+        if sequence=="det":
+            print("Processing %s" % sequence)
+            sequence_dir = os.path.join(mot_dir, sequence)
+            full_pathseq = os.path.abspath(sequence_dir)
 
-        image_dir = os.path.join(sequence_dir, "img1")
-        image_filenames = {
-            int(os.path.splitext(f)[0]): os.path.join(image_dir, f)
-            for f in os.listdir(image_dir)}
+            image_dir = os.path.join(mot_dir, "img1")
+            full_path = os.path.abspath(image_dir)
+            image_filenames = {
+                int(os.path.splitext(f)[0]): os.path.join(image_dir, f)
+                for f in os.listdir(image_dir)}
 
-        detection_file = os.path.join(
-            detection_dir, sequence, "det/det.txt")
-        detections_in = np.loadtxt(detection_file, delimiter=',')
-        detections_out = []
+            detection_file = os.path.join(
+                # detection_dir, sequence, "det/det.txt")
+                detection_dir, sequence, "det.txt")
+            full_pathdet = os.path.abspath(detection_file)
+            what = 6
+            detections_in = np.loadtxt(detection_file, delimiter=',')
+            detections_out = []
 
-        frame_indices = detections_in[:, 0].astype(np.int)
-        min_frame_idx = frame_indices.astype(np.int).min()
-        max_frame_idx = frame_indices.astype(np.int).max()
-        for frame_idx in range(min_frame_idx, max_frame_idx + 1):
-            print("Frame %05d/%05d" % (frame_idx, max_frame_idx))
-            mask = frame_indices == frame_idx
-            rows = detections_in[mask]
+            frame_indices = detections_in[:, 0].astype(np.int)
+            min_frame_idx = frame_indices.astype(np.int).min()
+            max_frame_idx = frame_indices.astype(np.int).max()
+            for frame_idx in range(min_frame_idx, max_frame_idx + 1):
+                print("Frame %05d/%05d" % (frame_idx, max_frame_idx))
+                mask = frame_indices == frame_idx
+                rows = detections_in[mask]
 
-            if frame_idx not in image_filenames:
-                print("WARNING could not find image for frame %d" % frame_idx)
-                continue
-            bgr_image = cv2.imread(
-                image_filenames[frame_idx], cv2.IMREAD_COLOR)
-            features = encoder(bgr_image, rows[:, 2:6].copy())
-            detections_out += [np.r_[(row, feature)] for row, feature
-                               in zip(rows, features)]
+                if frame_idx not in image_filenames:
+                    print("WARNING could not find image for frame %d" % frame_idx)
+                    continue
+                bgr_image = cv2.imread(
+                    image_filenames[frame_idx], cv2.IMREAD_COLOR)
+                features = encoder(bgr_image, rows[:, 2:6].copy())
+                detections_out += [np.r_[(row, feature)] for row, feature
+                                   in zip(rows, features)]
 
-        output_filename = os.path.join(output_dir, "%s.npy" % sequence)
-        np.save(
-            output_filename, np.asarray(detections_out), allow_pickle=False)
+            output_filename = os.path.join(output_dir, "%s.npy" % sequence)
+            np.save(
+                output_filename, np.asarray(detections_out), allow_pickle=False)
 
 
 def parse_args():
     """Parse command line arguments.
     """
     marspb = os.path.join(os.path.dirname(__file__), '..', 'networks', 'mars-small128.ckpt-68577.pb')
-    motdir = os.path.join(os.path.dirname(__file__), '..', 'MOT16', 'MOT16-01')
+    full_path = os.path.abspath(marspb)
+    motdir = os.path.join(os.path.dirname(__file__), '..', 'MOT15', 'TUD-Stadtmitte')
+    full_path2 = os.path.abspath(motdir)
 
     parser = argparse.ArgumentParser(description="Re-ID feature extractor")
     parser.add_argument(
@@ -212,7 +222,7 @@ def parse_args():
     parser.add_argument(
         "--detection_dir", help="Path to custom detections. Defaults to "
         "standard MOT detections Directory structure should be the default "
-        "MOTChallenge structure: [sequence]/det/det.txt", default=None)
+        "MOTChallenge structure: [sequence]/det.txt", default=None)
     parser.add_argument(
         "--output_dir", help="Output directory. Will be created if it does not"
         " exist.", default="detections")

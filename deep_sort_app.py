@@ -225,9 +225,9 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Deep SORT")
     parser.add_argument(
         "--sequence_dir", help="Path to MOTChallenge sequence directory",
-        default="./MOT16/MOT16-01")
+        default="./MOT15/KITTI-17")
     parser.add_argument(
-        "--detection_file", help="Path to custom detections.", default="./detections/MOT16_POI_test/MOT16-01.npy")
+        "--detection_file", help="Path to custom detections.", default="./detections/MOT15_POI_train/KITTI-17.npy")
     parser.add_argument(
         "--output_file", help="Path to the tracking output file. This file will"
         " contain the tracking results on completion.",
