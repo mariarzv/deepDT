@@ -1,6 +1,6 @@
 # vim: expandtab:ts=4:sw=4
-
-
+from deep_sort_upgrade.kalman_filter_nsa import KalmanFilter
+import numpy as np
 class TrackState:
     """
     Enumeration type for the single target track state. Newly created tracks are
@@ -63,10 +63,9 @@ class Track:
 
     """
 
-    def __init__(self, mean, covariance, track_id, n_init, max_age,
-                 feature=None):
-        self.mean = mean
-        self.covariance = covariance
+    def __init__(self, detection, track_id, n_init, max_age,
+                 feature=None, score=None):
+
         self.track_id = track_id
         self.hits = 1
         self.age = 1
@@ -77,8 +76,16 @@ class Track:
         if feature is not None:
             self.features.append(feature)
 
+        self.scores = []
+        if score is not None:
+            self.scores.append(score)
+
         self._n_init = n_init
         self._max_age = max_age
+
+        self.kf = KalmanFilter()
+
+        self.mean, self.covariance = self.kf.initiate(detection)
 
     def to_tlwh(self):
         """Get current position in bounding box format `(top left x, top left y,
@@ -123,6 +130,28 @@ class Track:
         self.age += 1
         self.time_since_update += 1
 
+    @staticmethod
+    def get_matrix(dict_frame_matrix, frame):
+        eye = np.eye(3)
+        matrix = dict_frame_matrix[frame]
+        dist = np.linalg.norm(eye - matrix)
+        if dist < 100:
+            return matrix
+        else:
+            return eye
+
+    def camera_update(self, video, frame):
+        dict_frame_matrix = None
+        frame = str(int(frame))
+        if frame in dict_frame_matrix:
+            matrix = self.get_matrix(dict_frame_matrix, frame)
+            x1, y1, x2, y2 = self.to_tlbr()
+            x1_, y1_, _ = matrix @ np.array([x1, y1, 1]).T
+            x2_, y2_, _ = matrix @ np.array([x2, y2, 1]).T
+            w, h = x2_ - x1_, y2_ - y1_
+            cx, cy = x1_ + w / 2, y1_ + h / 2
+            self.mean[:4] = [cx, cy, w / h, h]
+
     def update(self, kf, detection):
         """Perform Kalman filter measurement update step and update the feature
         cache.
@@ -136,7 +165,8 @@ class Track:
 
         """
         self.mean, self.covariance = kf.update(
-            self.mean, self.covariance, detection.to_xyah())
+            self.mean, self.covariance,
+            detection.to_xyah(), detection.confidence)
         self.features.append(detection.feature)
 
         self.hits += 1

@@ -8,6 +8,8 @@
       <sourceFolder url="file://$MODULE_DIR$" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/hota" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/deep_sort_upgrade" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/reid" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/yolo" isTestSource="false" />
     </content>
     <orderEntry type="jdk" jdkName="Python 3.10 (venv)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />

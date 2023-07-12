@@ -2,15 +2,15 @@
 from __future__ import absolute_import
 import numpy as np
 # from .
-from deep_sort import kalman_filter
+from deep_sort_upgrade import kalman_filter_nsa
 # from . import linear_assignment
 # from scipy.optimize import linear_sum_assignment as linear_assignment
 # from linear_assignment import linear_assignment
 # from .
-from deep_sort import iou_matching
-from .track import Track
+from deep_sort_upgrade import iou_matching
+from deep_sort_upgrade.track import Track
 
-from deep_sort import linear_assignment
+from deep_sort_upgrade import linear_assignment
 
 class Tracker:
     """
@@ -48,7 +48,7 @@ class Tracker:
         self.max_age = max_age
         self.n_init = n_init
 
-        self.kf = kalman_filter.KalmanFilter()
+        self.kf = kalman_filter_nsa.KalmanFilter()
         self.tracks = []
         self._next_id = 1
 
@@ -140,5 +140,5 @@ class Tracker:
         mean, covariance = self.kf.initiate(detection.to_xyah())
         self.tracks.append(Track(
             mean, covariance, self._next_id, self.n_init, self.max_age,
-            detection.feature))
+            detection.feature, detection.confidence))
         self._next_id += 1

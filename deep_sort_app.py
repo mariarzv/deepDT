@@ -15,6 +15,7 @@ from deep_sort.tracker import Tracker
 
 import time
 
+
 def gather_sequence_info(sequence_dir, detection_file):
     """Gather sequence information, such as image filenames, detections,
     groundtruth (if available).
@@ -210,14 +211,15 @@ def run(sequence_dir, detection_file, output_file, min_confidence,
     f = open(output_file, 'w')
     for row in results:
         print('%d,%d,%.2f,%.2f,%.2f,%.2f,1,-1,-1,-1' % (
-            row[0], row[1], row[2], row[3], row[4], row[5]),file=f)
+            row[0], row[1], row[2], row[3], row[4], row[5]), file=f)
 
 
 def bool_string(input_string):
-    if input_string not in {"True","False"}:
+    if input_string not in {"True", "False"}:
         raise ValueError("Please Enter a valid Ture/False choice")
     else:
         return (input_string == "True")
+
 
 def parse_args():
     """ Parse command line arguments.
@@ -227,9 +229,12 @@ def parse_args():
         "--sequence_dir", help="Path to MOTChallenge sequence directory",
         default="./MOT15/KITTI-17")
     parser.add_argument(
-        "--detection_file", help="Path to custom detections.", default="./detections/MOT15_POI_train/KITTI-17.npy")
+        "--detection_file",
+        help="Path to custom detections.",
+        default="./detections/MOT15_POI_train/KITTI-17.npy")
     parser.add_argument(
-        "--output_file", help="Path to the tracking output file. This file will"
+        "--output_file",
+        help="Path to the tracking output file. This file will"
         " contain the tracking results on completion.",
         default="./tmp/hypotheses.txt")
     parser.add_argument(
@@ -241,7 +246,7 @@ def parse_args():
         "box height. Detections with height smaller than this value are "
         "disregarded", default=0, type=int)
     parser.add_argument(
-        "--nms_max_overlap",  help="Non-maxima suppression threshold: Maximum "
+        "--nms_max_overlap", help="Non-maxima suppression threshold: Maximum "
         "detection overlap.", default=1.0, type=float)
     parser.add_argument(
         "--max_cosine_distance", help="Gating threshold for cosine distance "
@@ -258,6 +263,12 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     run(
-        args.sequence_dir, args.detection_file, args.output_file,
-        args.min_confidence, args.nms_max_overlap, args.min_detection_height,
-        args.max_cosine_distance, args.nn_budget, args.display)
+        args.sequence_dir,
+        args.detection_file,
+        args.output_file,
+        args.min_confidence,
+        args.nms_max_overlap,
+        args.min_detection_height,
+        args.max_cosine_distance,
+        args.nn_budget,
+        args.display)

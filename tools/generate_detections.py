@@ -18,7 +18,6 @@ def _run_in_batches(f, data_dict, out, batch_size):
         out[s:e] = f(batch_data_dict)
     if e < len(out):
         batch_data_dict = {k: v[e:] for k, v in data_dict.items()}
-        # out[e:] = f(batch_data_dict)
         out[e:] = f(batch_data_dict)
 
 
@@ -85,19 +84,9 @@ class ImageEncoder(object):
             # "net/%s:0" % output_name)
             "%s:0" % output_name)
 
-        outshape = self.output_var.get_shape()
-        inshape = self.input_var.get_shape()
-        ol = len(outshape)
-        il = len(inshape)
-
-        # corrected_out = self.output_var[:, 0, 0, :]
-        # corrected_out = tf.concat([self.output_var[0:1], self.output_var[-1:]], axis=0)
-        # corshape = corrected_out.get_shape()
-
-        # assert len(self.output_var.get_shape()) == 2
-        # assert len(corrected_out.get_shape()) == 2
+        assert len(self.output_var.get_shape()) == 2
         assert len(self.input_var.get_shape()) == 4
-        # self.feature_dim = self.output_var.get_shape().as_list()[-1]
+
         self.feature_dim = self.output_var.get_shape().as_list()[-1]
         self.image_shape = self.input_var.get_shape().as_list()[1:]
 
@@ -162,13 +151,11 @@ def generate_detections(encoder, mot_dir, output_dir, detection_dir=None):
                 "Failed to created output directory '%s'" % output_dir)
 
     for sequence in os.listdir(mot_dir):
-        if sequence=="det":
+        if sequence == "det":
             print("Processing %s" % sequence)
             sequence_dir = os.path.join(mot_dir, sequence)
-            full_pathseq = os.path.abspath(sequence_dir)
 
             image_dir = os.path.join(mot_dir, "img1")
-            full_path = os.path.abspath(image_dir)
             image_filenames = {
                 int(os.path.splitext(f)[0]): os.path.join(image_dir, f)
                 for f in os.listdir(image_dir)}
@@ -176,8 +163,7 @@ def generate_detections(encoder, mot_dir, output_dir, detection_dir=None):
             detection_file = os.path.join(
                 # detection_dir, sequence, "det/det.txt")
                 detection_dir, sequence, "det.txt")
-            full_pathdet = os.path.abspath(detection_file)
-            what = 6
+
             detections_in = np.loadtxt(detection_file, delimiter=',')
             detections_out = []
 
@@ -207,9 +193,7 @@ def parse_args():
     """Parse command line arguments.
     """
     marspb = os.path.join(os.path.dirname(__file__), '..', 'networks', 'mars-small128.ckpt-68577.pb')
-    full_path = os.path.abspath(marspb)
     motdir = os.path.join(os.path.dirname(__file__), '..', 'MOT15', 'TUD-Stadtmitte')
-    full_path2 = os.path.abspath(motdir)
 
     parser = argparse.ArgumentParser(description="Re-ID feature extractor")
     parser.add_argument(
