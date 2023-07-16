@@ -6,6 +6,7 @@ import os
 import errno
 import cv2
 import numpy as np
+import time
 
 from application_util import preprocessing
 from application_util import visualization
@@ -13,7 +14,11 @@ from deep_sort import nn_matching
 from deep_sort_upgrade.detection import Detection
 from deep_sort.tracker import Tracker
 
-from yolo.yolo_detect import Yolov5Tflite
+from detectors.torchvision_detect import TVdetect
+from segmentation.segmentation_pseg import SegmentationPS
+from segmentation_inst import SegmentationMRCNN
+from reid.reid_features import REIDFeatures
+from detectors.yolo_detect import Yolov5Tflite
 
 import tensorflow as tf
 
@@ -99,42 +104,43 @@ def gather_sequence_info(sequence_dir, detection_file):
     return seq_info
 
 
-def create_detections(detection_mat, frame_idx, min_height=0):
-    """Create detections for given frame index from the raw detection matrix.
+# def create_detections(detection_mat, frame_idx, min_height=0):
+#     """Create detections for given frame index from the raw detection matrix.
+#
+#     Parameters
+#     ----------
+#     detection_mat : ndarray
+#         Matrix of detections. The first 10 columns of the detection matrix are
+#         in the standard MOTChallenge detection format. In the remaining columns
+#         store the feature vector associated with each detection.
+#     frame_idx : int
+#         The frame index.
+#     min_height : Optional[int]
+#         A minimum detection bounding box height. Detections that are smaller
+#         than this value are disregarded.
+#
+#     Returns
+#     -------
+#     List[tracker.Detection]
+#         Returns detection responses at given frame index.
+#
+#     """
+#     frame_indices = detection_mat[:, 0].astype(np.int)
+#     mask = frame_indices == frame_idx
+#
+#     detection_list = []
+#     for row in detection_mat[mask]:
+#         bbox, confidence, feature = row[2:6], row[6], row[10:]
+#         if bbox[3] < min_height:
+#             continue
+#         detection_list.append(Detection(bbox, confidence, feature))
+#     return detection_list
 
-    Parameters
-    ----------
-    detection_mat : ndarray
-        Matrix of detections. The first 10 columns of the detection matrix are
-        in the standard MOTChallenge detection format. In the remaining columns
-        store the feature vector associated with each detection.
-    frame_idx : int
-        The frame index.
-    min_height : Optional[int]
-        A minimum detection bounding box height. Detections that are smaller
-        than this value are disregarded.
 
-    Returns
-    -------
-    List[tracker.Detection]
-        Returns detection responses at given frame index.
-
-    """
-    frame_indices = detection_mat[:, 0].astype(np.int)
-    mask = frame_indices == frame_idx
-
-    detection_list = []
-    for row in detection_mat[mask]:
-        bbox, confidence, feature = row[2:6], row[6], row[10:]
-        if bbox[3] < min_height:
-            continue
-        detection_list.append(Detection(bbox, confidence, feature))
-    return detection_list
-
-
+# Original DeepSORT models
 def run(sequence_dir, detection_file, output_file, min_confidence,
         nms_max_overlap, min_detection_height, max_cosine_distance,
-        nn_budget, display, detmodel):
+        nn_budget, display):
     """Run multi-target tracker on a particular sequence.
 
     Parameters
@@ -161,8 +167,9 @@ def run(sequence_dir, detection_file, output_file, min_confidence,
         is enforced.
     display : bool
         If True, show visualization of intermediate tracking results.
-    detmodel : str
     """
+    detmodel = os.path.join(os.path.dirname(__file__), 'networks', 'mars-small128.ckpt-68577.pb')
+
     seq_info = gather_sequence_info(sequence_dir, detection_file)
     metric = nn_matching.NearestNeighborDistanceMetric(
         "cosine", max_cosine_distance, nn_budget)
@@ -170,7 +177,7 @@ def run(sequence_dir, detection_file, output_file, min_confidence,
     results = []
 
     # Gen detections part---------------------------------------------------------------------------------------------
-    encoder = create_box_encoder(args.detmodel, batch_size=32)
+    encoder = create_box_encoder(detmodel, batch_size=32)
 
     image_dir = os.path.join(sequence_dir, "img1")
     image_filenames = {
@@ -256,9 +263,9 @@ def run(sequence_dir, detection_file, output_file, min_confidence,
             row[0], row[1], row[2], row[3], row[4], row[5]), file=f)
 
 
-def run_yolo(sequence_dir, detection_file, output_file, min_confidence,
-        nms_max_overlap, min_detection_height, max_cosine_distance,
-        nn_budget, display, detmodel, weights):
+def run_upd(sequence_dir, detection_file, output_file, min_confidence,
+            nms_max_overlap, min_detection_height, max_cosine_distance,
+            nn_budget, display, detmodel, reidmodel):
     """Run multi-target tracker on a particular sequence.
 
     Parameters
@@ -285,10 +292,13 @@ def run_yolo(sequence_dir, detection_file, output_file, min_confidence,
         is enforced.
     display : bool
         If True, show visualization of intermediate tracking results.
-    detmodel : str
-    weights : str
-        Path to preloaded model weights file.
+    detmodel : int
+        Detection (or segmentation) model index that user selected.
+    reidmodel : int
+        ReID model index that user selected.
     """
+    dsmodel = os.path.join(os.path.dirname(__file__), 'networks', 'mars-small128.ckpt-68577.pb')
+
     seq_info = gather_sequence_info(sequence_dir, detection_file)
     metric = nn_matching.NearestNeighborDistanceMetric(
         "cosine", max_cosine_distance, nn_budget)
@@ -296,7 +306,7 @@ def run_yolo(sequence_dir, detection_file, output_file, min_confidence,
     results = []
 
     # Gen detections part---------------------------------------------------------------------------------------------
-    encoder = create_box_encoder(args.detmodel, batch_size=32)
+    encoder = create_box_encoder(dsmodel, batch_size=32)
 
     image_dir = os.path.join(sequence_dir, "img1")
     image_filenames = {
@@ -313,50 +323,91 @@ def run_yolo(sequence_dir, detection_file, output_file, min_confidence,
     min_frame_idx = frame_indices.astype(np.int).min()
     max_frame_idx = frame_indices.astype(np.int).max()
 
+    reidobj = REIDFeatures()
+
     def frame_callback(vis, frame_idx):
         print("Processing frame %05d" % frame_idx)
 
-        # Generate yolo detections
-
-        image_resized = cv2.imread(
-            image_filenames[frame_idx], cv2.IMREAD_COLOR)
-
-        image_array = np.asarray(image_resized)
-
-        normalized_image_array = image_array.astype(np.float32) / 255.0
-
-        img_size = image_resized.shape[:2]
-
-        yolov5_tflite_obj = Yolov5Tflite(weights, img_size, 0.25, 0.45)
-
-        result_boxes, result_scores, result_class_names = yolov5_tflite_obj.detect(
-            normalized_image_array)
-
-        # Generate detections for the current frame-------------------------------------------------------------------
-        mask = frame_indices == frame_idx
-        rows = detections_in[mask]
-        detections_out = []
-
-        bgr_image = cv2.imread(
-            image_filenames[frame_idx], cv2.IMREAD_COLOR)
-
-
-
-        features = encoder(bgr_image, rows[:, 2:6].copy())
-        detections_out += [np.r_[(row, feature)] for row, feature
-                           in zip(rows, features)]
-
-        # Load image and generate detections.-------------------------------------------------------------------------
-        # detections = create_detections(seq_info["detections"], frame_idx, min_detection_height)
-
-        # Instead of reading from the file (commented out above) we will use the output from detection step
-
         detections = []
-        for rowd in detections_out:
-            bbox, confidence, feature = rowd[2:6], rowd[6], rowd[10:]
-            if bbox[3] < min_detection_height:
-                continue
-            detections.append(Detection(bbox, confidence, feature))
+        feature_placeholder = []
+
+        image_path = image_filenames[frame_idx]
+
+        start_time_d = time.time()
+
+        # Get Bbox and confidence (score) data for the frame:
+        # detections.append(Detection(bbox, confidence, feature))
+
+        # Yolov5
+        if detmodel == 1:
+            # detections.append(Detection(bbox, confidence, feature_placeholder))
+            x = 10
+
+        # Yolov7
+        elif detmodel == 2:
+            # detections.append(Detection(bbox, confidence, feature_placeholder))
+            x = 10
+
+        #  FasterRCNN
+        elif detmodel == 3:
+            detector = TVdetect(3, image_path)
+            detections = detector.detect()
+
+        #  MaskRCNN
+        elif detmodel == 4:
+            detector = TVdetect(4, image_path)
+            detections = detector.detect()
+
+        #  KeypointRCNN
+        elif detmodel == 5:
+            detector = TVdetect(5, image_path)
+            detections = detector.detect()
+
+        #  People segmentation
+        elif detmodel == 6:
+            detector = SegmentationPS(image_path)
+            detections = detector.segment()
+
+        #  MaskRCNN instance segmentation
+        elif detmodel == 7:
+            detector = SegmentationMRCNN(image_path)
+            detections = detector.segment()
+
+        end_time_d = time.time()
+        elapsed_time_d = end_time_d - start_time_d
+        print(f"Elapsed time detection: {elapsed_time_d:.6f} seconds")
+
+        # Get features data for the frame:
+
+        start_time_r = time.time()
+
+        #  MuDeep
+        if reidmodel == 0:
+            detections = reidobj.features(0, image_path, detections)
+
+        #  ResNet-50
+        if reidmodel == 1:
+            detections = reidobj.features(1, image_path, detections)
+
+        #  HACNN
+        if reidmodel == 2:
+            detections = reidobj.features(2, image_path, detections)
+
+        #  PCB
+        if reidmodel == 3:
+            detections = reidobj.features(3, image_path, detections)
+
+        #  MLFN
+        if reidmodel == 4:
+            detections = reidobj.features(4, image_path, detections)
+
+        #  OSNET
+        if reidmodel == 5:
+            detections = reidobj.features(5, image_path, detections)
+
+        end_time_r = time.time()
+        elapsed_time_r = end_time_r - start_time_r
+        print(f"Elapsed time ReID: {elapsed_time_r:.6f} seconds")
 
         detections = [d for d in detections if d.confidence >= min_confidence]
 
@@ -521,8 +572,6 @@ def create_box_encoder(model_filename, input_name="images",
 def parse_args():
     """ Parse command line arguments.
     """
-    marspb = os.path.join(os.path.dirname(__file__), 'networks', 'mars-small128.ckpt-68577.pb')
-    yolov5s = os.path.join(os.path.dirname(__file__), 'networks', 'yolo', 'yolov5s-fp16.tflite')
 
     parser = argparse.ArgumentParser(description="Deep SORT")
     parser.add_argument(
@@ -557,20 +606,27 @@ def parse_args():
         default=False, type=bool_string)
     parser.add_argument(
              "--detmodel",
-             default=marspb,
-             help="Path to freezed inference graph protobuf.")
+             default=0,
+             help="Detection model for updated tracking.")
     parser.add_argument(
-        "--weights",
-        default=yolov5s,
-        help="Path to preloaded model weights file.")
+            "--reidmodel",
+            default=0,
+            help="ReID model for updated tracking.")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
 
-    valid_values = [0, 1, 2, 3]
-    dmod = int(input("Please enter detection model No (0 - deepSort default, 1 - yolov5s, 2 - yolov7s, or 3 - nanodet): "))
+    dmod = int(input("""Please choose detection model:
+    0 - deepSort orig
+    1 - Yolov5s
+    2 - Yolov7s
+    3 - FasterRCNN
+    4 - MaskRCNN
+    5 - KeypointRCNN
+    6 - People segmentation
+    7 - MaskRCNN instance segmentation:"""))
 
     if dmod == 0:
         run(args.sequence_dir,
@@ -581,11 +637,18 @@ if __name__ == "__main__":
             args.min_detection_height,
             args.max_cosine_distance,
             args.nn_budget,
-            args.display,
-            args.detmodel)
+            args.display)
 
-    if dmod == 1:
-        run_yolo(args.sequence_dir,
+    else:
+        rmod = int(input("""Please choose reid model 
+        0 - MuDeep, 
+        1 - ResNet-50, 
+        2 - HACNN, 
+        3 - PCB, 
+        4 - MLFN, 
+        5 - OSNET:"""))
+
+        run_upd(args.sequence_dir,
                 args.detection_file,
                 args.output_file,
                 args.min_confidence,
@@ -594,5 +657,5 @@ if __name__ == "__main__":
                 args.max_cosine_distance,
                 args.nn_budget,
                 args.display,
-                args.detmodel,
-                args.weights)
+                dmod,
+                rmod)

@@ -1,5 +1,7 @@
 # Deep SORT
 
+STILL UPDATING COLAB AND REPORT
+
 ## Introduction
 
 This repository contains code for *Simple Online and Realtime Tracking with a Deep Association Metric* (Deep SORT).
