@@ -11,7 +11,7 @@ from deep_sort_upgrade.detection import Detection
 
 # MODEL_DIR = "C:\\Users\\maria\\dev\\HSE\\deepDT\\segmentation"
 MODEL_DIR = os.path.dirname(os.path.dirname(__file__))
-COCO_MODEL_PATH = "mask_rcnn_coco.h5"
+COCO_MODEL_PATH = 'mask_rcnn_coco.h5'
 if not os.path.exists(COCO_MODEL_PATH):
     utils.download_trained_weights(COCO_MODEL_PATH)
 
@@ -61,7 +61,7 @@ class InferenceConfig(CocoConfig):
 class SegmentationMRCNN:
     """
     This class performs segmentation on input image, based on mrcnn module
-    !!!! ATTENZIONE PICKPOCKET !!!! the mrcnn module code was changed to tf2 version and some errors were fixed
+    !!!! the mrcnn module code was changed to tf2 version and some errors were fixed
     the updated module .py files are included within segmentation folder
     """
 
@@ -75,12 +75,14 @@ class SegmentationMRCNN:
 
         config = InferenceConfig()
         # config.display()
-
+        model_dir = os.path.dirname(__file__)
         # Create model object in inference mode.
-        model = modellib.MaskRCNN(mode="inference", model_dir=MODEL_DIR, config=config)
+        model = modellib.MaskRCNN(mode="inference", model_dir=model_dir, config=config)
+
+        weights_dir = model_dir + '\\mask_rcnn_coco.h5'
 
         # Load weights trained on MS-COCO
-        model.load_weights(COCO_MODEL_PATH, by_name=True)
+        model.load_weights(weights_dir, by_name=True)
 
         image = skimage.io.imread(self.image_path)
 

@@ -1,15 +1,27 @@
 import numpy as np
 import os
 import tensorflow as tf
+import tensorflow.lite as tflite
 import cv2
+import random
 import torch
 from deep_sort_upgrade.detection import Detection
+import time
+from PIL import Image
 
 classnames = img = 'models/class_names.txt'
 
+def imgresizew(image, w):
+    height, width = image.shape[:2]
+    desired_width = w
+    scale = desired_width / width
+    new_height = int(height * scale)
+    new_width = int(width * scale)
+    return cv2.resize(image, (new_width, new_height))
+
 class Yolov5Tflite:
 
-    def __init__(self, weights='models/yolov5s-fp16.tflite', image_size=416,
+    def __init__(self, weights='yolov5s-fp16.tflite', image_size=416,
                  conf_thres=0.25, iou_thres=0.45):
 
         self.weights = weights
@@ -110,12 +122,13 @@ class Yolov5Tflite:
 
         return result_boxes, result_scores, result_class_names
 
-    def detect(self, image):
+    def detect(self, image, w):
+        image = imgresizew(image, w)
         original_size = image.shape[:2]
         input_data = np.ndarray(shape=(1, self.image_size, self.image_size, 3),
                                 dtype=np.float32)
-        image = cv2.resize(image, (self.image_size, self.image_size))
-        input_data[0] = image.astype(np.float32)/255.0
+        # image = cv2.resize(image,(self.image_size,self.image_size))
+        # input_data[0] = image.astype(np.float32)/255.0
         input_data[0] = image
         interpreter = tf.lite.Interpreter(self.weights)
         interpreter.allocate_tensors()
@@ -189,19 +202,114 @@ class Yolov5Tflite:
         output_path = "output_image_test_y5s.jpg"
         cv2.imwrite(output_path, image)
 
-class Yolov7pt:
-    def __init__(self, weights='yolov7.pt', image_size=416,
-                 conf_thres=0.25, iou_thres=0.45):
+def letterbox_image(image, size):
+    iw, ih = image.size
+    w, h = size
+    scale = min(w / iw, h / ih)
+    nw = int(iw * scale)
+    nh = int(ih * scale)
 
-        self.weights = weights
-        self.image_size = image_size
-        self.conf_thres = conf_thres
-        self.iou_thres = iou_thres
+    image = image.resize((nw, nh), Image.BICUBIC)
+    new_image = Image.new('RGB', size, (128, 128, 128))
+    new_image.paste(image, ((w - nw) // 2, (h - nh) // 2))
+    return new_image
 
-        with open(classnames) as f:
-            self.names = [line.rstrip() for line in f]
+
+def clip_coords(boxes, img_shape):
+    # Clip bounding xyxy bounding boxes to image shape (height, width)
+
+    boxes[:, 0].clip(0, img_shape[1], out=boxes[:, 0])  # x1
+    boxes[:, 1].clip(0, img_shape[0], out=boxes[:, 1])  # y1
+    boxes[:, 2].clip(0, img_shape[1], out=boxes[:, 2])  # x2
+    boxes[:, 3].clip(0, img_shape[0], out=boxes[:, 3])  # y2
+
+def scale_coords(img1_shape, coords, img0_shape, ratio_pad=None):
+    # Rescale coords (xyxy) from img1_shape to img0_shape
+    if ratio_pad is None:  # calculate from img0_shape
+        gain = max(img1_shape) / max(img0_shape)  # gain  = old / new
+        pad = (img1_shape[1] - img0_shape[1] * gain) / \
+            2, (img1_shape[0] - img0_shape[0] * gain) / 2  # wh padding
+    else:
+        gain = ratio_pad[0][0]
+        pad = ratio_pad[1]
+
+    coords[:, [0, 2]] -= pad[0]  # x padding
+    coords[:, [1, 3]] -= pad[1]  # y padding
+    coords[:, :4] /= gain
+    clip_coords(coords, img0_shape)
+    return coords
+
+def detect_image(weights, image_url, img_size, conf_thres, iou_thres):
+
+    start_time = time.time()
+
+    # image = cv2.imread(image_url)
+    image = Image.open(image_url)
+    original_size = image.size[:2]
+    size = (img_size, img_size)
+    image_resized = letterbox_image(image, size)
+    img = np.asarray(image)
+
+    # image = ImageOps.fit(image, size, Image.ANTIALIAS)
+    image_array = np.asarray(image_resized)
+
+    normalized_image_array = image_array.astype(np.float32) / 255.0
+
+    yolov5_tflite_obj = Yolov5Tflite(weights, img_size, conf_thres, iou_thres)
+
+    result_boxes, result_scores, result_class_names = yolov5_tflite_obj.detect(
+        normalized_image_array, img_size)
+
+    if len(result_boxes) > 0:
+        result_boxes = scale_coords(size, np.array(
+            result_boxes), (original_size[1], original_size[0]))
+        font = cv2.FONT_HERSHEY_SIMPLEX
+
+        # org
+        org = (20, 40)
+
+        # fontScale
+        fontScale = 0.5
+
+        # Blue color in BGR
+        color = (0, 255, 0)
+
+        # Line thickness of 1 px
+        thickness = 1
+
+        for i, r in enumerate(result_boxes):
+
+            org = (int(r[0]), int(r[1]))
+            cv2.rectangle(
+                img, (int(
+                    r[0]), int(
+                    r[1])), (int(
+                        r[2]), int(
+                        r[3])), (255, 0, 0), 1)
+            cv2.putText(img, str(int(100 * result_scores[i])) + '%  ' + str(result_class_names[i]),
+                        org, font, fontScale, color, thickness, cv2.LINE_AA)
+
+        # save_result_filepath = image_url.split(
+        #     '/')[-1].split('.')[0] + 'yolov5_output.jpg'
+        # cv2.imwrite(save_result_filepath, img[:, :, ::-1])
+
+        end_time = time.time()
+
+        print('FPS:', 1 / (end_time - start_time))
+        print('Total Time Taken:', end_time - start_time)
+    return img
 
 
 if __name__ == "__main__":
-
-    Yolov5Tflite.detect_test()
+    image_p = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'MOT15',
+                              'TUD-Stadtmitte',
+                              'img1',
+                              '000001.jpg')
+# 5s - 416     5m,5l,5n - 640
+    img0 = detect_image(weights='models/yolov5s-fp16.tflite',
+                        image_url=image_p,
+                        img_size=416,
+                        conf_thres=0.25,
+                        iou_thres=0.45)
+    output_path = "output_image_test_y5s.jpg"
+    cv2.imwrite(output_path, img0)

@@ -11,6 +11,7 @@
       <sourceFolder url="file://$MODULE_DIR$/reid" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/segmentation" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/detectors" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/detectors/yolov7" isTestSource="false" />
     </content>
     <orderEntry type="jdk" jdkName="Python 3.10 (venv)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
